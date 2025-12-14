@@ -51,6 +51,7 @@ enum NodeState {
 /// - No duplicate ID definitions
 /// - No forward references (DAG property)
 /// - Resource limits (max nodes, depth, inputs, outputs)
+#[derive(Debug)]
 pub struct Builder {
     graph: Graph,
     phase: Phase,
