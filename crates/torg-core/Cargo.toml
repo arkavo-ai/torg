@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 description = "TØR-G: Token-Only Reasoner (Graph) - Boolean circuit IR for AI policy synthesis"
 keywords = ["ai", "llm", "policy", "boolean-circuit", "dag"]
 categories = ["algorithms", "data-structures"]
