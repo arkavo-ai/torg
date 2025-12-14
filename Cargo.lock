@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "torg-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "criterion",
  "thiserror",
@@ -468,21 +468,21 @@ dependencies = [
 
 [[package]]
 name = "torg-mask"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "torg-core",
 ]
 
 [[package]]
 name = "torg-serde"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "torg-core",
 ]
 
 [[package]]
 name = "torg-verify"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "torg-core",
 ]

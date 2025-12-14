@@ -23,7 +23,7 @@ TØR-G enables LLMs to generate **formally verifiable boolean circuits** by emit
 | [`torg-core`](crates/torg-core) | Core runtime: tokens, builder, evaluator |
 | [`torg-serde`](crates/torg-serde) | Serialization/deserialization (planned) |
 | [`torg-verify`](crates/torg-verify) | SAT/BDD verification (planned) |
-| [`torg-mask`](crates/torg-mask) | LLM logit masking (planned) |
+| [`torg-mask`](crates/torg-mask) | LLM logit masking: constrained decoding |
 
 ## Quick Start
 
