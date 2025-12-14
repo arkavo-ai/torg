@@ -1,0 +1,12 @@
+[package]
+name = "torg-verify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Formal verification for TØR-G boolean circuits"
+keywords = ["ai", "llm", "policy", "verification", "sat"]
+categories = ["algorithms"]
+
+[dependencies]
+torg-core = { path = "../torg-core" }

@@ -1,0 +1,12 @@
+[package]
+name = "torg-mask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "LLM logit masking for TØR-G constrained decoding"
+keywords = ["ai", "llm", "policy", "logit-masking"]
+categories = ["algorithms"]
+
+[dependencies]
+torg-core = { path = "../torg-core" }

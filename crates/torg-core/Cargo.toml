@@ -1,0 +1,19 @@
+[package]
+name = "torg-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "TØR-G: Token-Only Reasoner (Graph) - Boolean circuit IR for AI policy synthesis"
+keywords = ["ai", "llm", "policy", "boolean-circuit", "dag"]
+categories = ["algorithms", "data-structures"]
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "eval_bench"
+harness = false

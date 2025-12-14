@@ -1,0 +1,12 @@
+[package]
+name = "torg-serde"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Serialization/deserialization for TØR-G token streams"
+keywords = ["ai", "llm", "policy", "serde"]
+categories = ["encoding"]
+
+[dependencies]
+torg-core = { path = "../torg-core" }
