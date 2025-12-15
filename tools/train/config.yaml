@@ -1,0 +1,69 @@
+# TØR-G LoRA Fine-Tuning Configuration
+# For Ministral-3-8B-Base-2512
+
+model:
+  name: mistralai/Ministral-3-8B-Base-2512
+  # Local path if downloaded via huggingface-cli
+  local_path: /Volumes/SSD/huggingface/hub/models--mistralai--Ministral-3-8B-Base-2512
+
+dataset:
+  name: Arkavo/torg-dataset
+  # Or local path
+  local_path: null
+  prompt_field: prompt
+  completion_field: completion
+  # Format template for training
+  template: |
+    ### Policy:
+    {prompt}
+
+    ### TØR-G Token Sequence:
+    {completion}
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+  # Optional: gate_proj, up_proj, down_proj for more capacity
+
+training:
+  epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  # Effective batch size: 4 * 4 = 16
+  learning_rate: 2.0e-4
+  warmup_ratio: 0.03
+  max_seq_length: 512
+  # Optimizer
+  optimizer: adamw_8bit
+  weight_decay: 0.01
+  # Scheduler
+  lr_scheduler_type: cosine
+  # Precision
+  fp16: false
+  bf16: true
+  # Gradient checkpointing for memory efficiency
+  gradient_checkpointing: true
+
+output:
+  # Output directory for checkpoints
+  dir: ./output/torg-ministral-8b-lora
+  # Save strategy
+  save_strategy: epoch
+  save_total_limit: 3
+  # Logging
+  logging_steps: 10
+  # Evaluation (optional)
+  eval_strategy: "no"
+
+# Quantization for training (4-bit QLoRA)
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: bfloat16
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_use_double_quant: true

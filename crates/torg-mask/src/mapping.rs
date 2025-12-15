@@ -67,6 +67,42 @@ impl TokenMapping {
         }
     }
 
+    /// Mapping for Mistral/Ministral models using reserved `<SPECIAL_N>` tokens.
+    ///
+    /// Ministral tokenizers reserve token IDs 36-565 as `<SPECIAL_N>` placeholders.
+    /// This mapping uses IDs 36-300 for TØR-G tokens:
+    ///
+    /// | TØR-G Token | Ministral ID |
+    /// |-------------|--------------|
+    /// | `Or`        | 36           |
+    /// | `Nor`       | 37           |
+    /// | `Xor`       | 38           |
+    /// | `NodeStart` | 39           |
+    /// | `NodeEnd`   | 40           |
+    /// | `InputDecl` | 41           |
+    /// | `OutputDecl`| 42           |
+    /// | `True`      | 43           |
+    /// | `False`     | 44           |
+    /// | `Id(0)`     | 45           |
+    /// | `Id(255)`   | 300          |
+    ///
+    /// Compatible with: Ministral-3B, Ministral-8B, Mistral-7B v0.3+
+    pub fn ministral() -> Self {
+        Self {
+            or_id: 36,
+            nor_id: 37,
+            xor_id: 38,
+            node_start_id: 39,
+            node_end_id: 40,
+            input_decl_id: 41,
+            output_decl_id: 42,
+            true_id: 43,
+            false_id: 44,
+            id_base: 45,
+            id_count: 256,
+        }
+    }
+
     /// Map a TØR-G token to its LLM vocabulary ID.
     ///
     /// Returns `None` if the token cannot be mapped (e.g., Id out of range).
@@ -346,5 +382,59 @@ mod tests {
         assert_eq!(mapping.get(Token::Id(0)), Some(1000));
         assert_eq!(mapping.get(Token::Id(127)), Some(1127));
         assert_eq!(mapping.get(Token::Id(128)), None);
+    }
+
+    #[test]
+    fn test_ministral_mapping() {
+        let mapping = TokenMapping::ministral();
+
+        // Fixed tokens use reserved <SPECIAL_N> IDs 36-44
+        assert_eq!(mapping.get(Token::Or), Some(36));
+        assert_eq!(mapping.get(Token::Nor), Some(37));
+        assert_eq!(mapping.get(Token::Xor), Some(38));
+        assert_eq!(mapping.get(Token::NodeStart), Some(39));
+        assert_eq!(mapping.get(Token::NodeEnd), Some(40));
+        assert_eq!(mapping.get(Token::InputDecl), Some(41));
+        assert_eq!(mapping.get(Token::OutputDecl), Some(42));
+        assert_eq!(mapping.get(Token::True), Some(43));
+        assert_eq!(mapping.get(Token::False), Some(44));
+
+        // Id tokens start at 45
+        assert_eq!(mapping.get(Token::Id(0)), Some(45));
+        assert_eq!(mapping.get(Token::Id(255)), Some(300));
+        assert_eq!(mapping.get(Token::Id(256)), None);
+
+        // Total: 9 fixed + 256 Id = 265 tokens
+        assert_eq!(mapping.total_tokens(), 265);
+    }
+
+    #[test]
+    fn test_ministral_round_trip() {
+        let mapping = TokenMapping::ministral();
+
+        // Test all fixed tokens
+        for token in [
+            Token::Or,
+            Token::Nor,
+            Token::Xor,
+            Token::NodeStart,
+            Token::NodeEnd,
+            Token::InputDecl,
+            Token::OutputDecl,
+            Token::True,
+            Token::False,
+        ] {
+            let id = mapping.get(token).unwrap();
+            let back = mapping.reverse(id).unwrap();
+            assert_eq!(token, back);
+        }
+
+        // Test Id tokens at boundaries
+        for n in [0, 1, 127, 128, 254, 255] {
+            let token = Token::Id(n);
+            let id = mapping.get(token).unwrap();
+            let back = mapping.reverse(id).unwrap();
+            assert_eq!(token, back);
+        }
     }
 }

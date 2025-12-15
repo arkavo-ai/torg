@@ -1,0 +1,17 @@
+# TØR-G LoRA Training Dependencies
+
+# Core training
+torch>=2.0.0
+transformers>=4.40.0
+datasets>=2.14.0
+accelerate>=0.27.0
+peft>=0.10.0
+trl>=0.8.0
+bitsandbytes>=0.43.0
+
+# Config
+pyyaml>=6.0
+
+# Unsloth for faster training (recommended)
+# Note: Install separately based on your CUDA version
+# pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"

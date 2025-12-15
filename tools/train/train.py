@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""TØR-G LoRA fine-tuning script for Ministral models.
+
+Usage:
+    python train.py --config config.yaml
+    python train.py --config config.yaml --dry-run
+"""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+import yaml
+
+
+def load_config(config_path: str) -> dict:
+    """Load configuration from YAML file."""
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def train_with_unsloth(config: dict, dry_run: bool = False):
+    """Train using Unsloth (recommended for speed)."""
+    try:
+        from unsloth import FastLanguageModel
+        from trl import SFTTrainer
+        from transformers import TrainingArguments
+        from datasets import load_dataset
+    except ImportError as e:
+        print(f"Error: Missing dependencies. Install with:")
+        print("  pip install unsloth trl transformers datasets")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("TØR-G LoRA Fine-Tuning with Unsloth")
+    print("=" * 60)
+
+    model_name = config["model"]["name"]
+    local_path = config["model"].get("local_path")
+
+    print(f"\nLoading model: {model_name}")
+    if local_path and Path(local_path).exists():
+        print(f"  Using local path: {local_path}")
+        model_name = local_path
+
+    if dry_run:
+        print("[DRY RUN] Would load model and start training")
+        return
+
+    # Load model with 4-bit quantization
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name,
+        max_seq_length=config["training"]["max_seq_length"],
+        load_in_4bit=config["quantization"]["load_in_4bit"],
+        dtype=None,  # Auto-detect
+    )
+
+    # Add LoRA adapters
+    print("\nAdding LoRA adapters...")
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=config["lora"]["r"],
+        lora_alpha=config["lora"]["alpha"],
+        lora_dropout=config["lora"]["dropout"],
+        target_modules=config["lora"]["target_modules"],
+        bias="none",
+        use_gradient_checkpointing=config["training"]["gradient_checkpointing"],
+        random_state=42,
+    )
+
+    # Load dataset
+    print("\nLoading dataset...")
+    dataset_name = config["dataset"]["name"]
+    local_dataset = config["dataset"].get("local_path")
+
+    if local_dataset and Path(local_dataset).exists():
+        dataset = load_dataset("json", data_files=local_dataset, split="train")
+    else:
+        dataset = load_dataset(dataset_name, split="train")
+
+    print(f"  Dataset size: {len(dataset)} examples")
+
+    # Format prompt template
+    template = config["dataset"]["template"]
+    prompt_field = config["dataset"]["prompt_field"]
+    completion_field = config["dataset"]["completion_field"]
+
+    def format_example(example):
+        return template.format(
+            prompt=example[prompt_field],
+            completion=example[completion_field]
+        )
+
+    # Training arguments
+    output_dir = config["output"]["dir"]
+    os.makedirs(output_dir, exist_ok=True)
+
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=config["training"]["epochs"],
+        per_device_train_batch_size=config["training"]["batch_size"],
+        gradient_accumulation_steps=config["training"]["gradient_accumulation_steps"],
+        learning_rate=config["training"]["learning_rate"],
+        warmup_ratio=config["training"]["warmup_ratio"],
+        weight_decay=config["training"]["weight_decay"],
+        lr_scheduler_type=config["training"]["lr_scheduler_type"],
+        fp16=config["training"]["fp16"],
+        bf16=config["training"]["bf16"],
+        logging_steps=config["output"]["logging_steps"],
+        save_strategy=config["output"]["save_strategy"],
+        save_total_limit=config["output"]["save_total_limit"],
+        optim=config["training"]["optimizer"],
+        report_to="none",  # Disable wandb/tensorboard
+    )
+
+    # Create trainer
+    print("\nInitializing trainer...")
+    trainer = SFTTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset,
+        formatting_func=format_example,
+        max_seq_length=config["training"]["max_seq_length"],
+        args=training_args,
+    )
+
+    # Train!
+    print("\n" + "=" * 60)
+    print("Starting training...")
+    print("=" * 60)
+
+    trainer.train()
+
+    # Save final model
+    print("\nSaving model...")
+    model.save_pretrained(f"{output_dir}/final")
+    tokenizer.save_pretrained(f"{output_dir}/final")
+
+    print(f"\nTraining complete! Model saved to {output_dir}/final")
+
+
+def train_with_peft(config: dict, dry_run: bool = False):
+    """Train using standard PEFT (fallback)."""
+    try:
+        from transformers import (
+            AutoModelForCausalLM,
+            AutoTokenizer,
+            TrainingArguments,
+            Trainer,
+            BitsAndBytesConfig,
+        )
+        from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+        from datasets import load_dataset
+        import torch
+    except ImportError as e:
+        print(f"Error: Missing dependencies. Install with:")
+        print("  pip install transformers peft datasets bitsandbytes accelerate")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("TØR-G LoRA Fine-Tuning with PEFT")
+    print("=" * 60)
+
+    model_name = config["model"]["name"]
+    local_path = config["model"].get("local_path")
+
+    print(f"\nLoading model: {model_name}")
+    if local_path and Path(local_path).exists():
+        print(f"  Using local path: {local_path}")
+        model_name = local_path
+
+    if dry_run:
+        print("[DRY RUN] Would load model and start training")
+        return
+
+    # Quantization config
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=config["quantization"]["load_in_4bit"],
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_quant_type=config["quantization"]["bnb_4bit_quant_type"],
+        bnb_4bit_use_double_quant=config["quantization"]["bnb_4bit_use_double_quant"],
+    )
+
+    # Load model
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        quantization_config=bnb_config,
+        device_map="auto",
+        trust_remote_code=True,
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    # Prepare for k-bit training
+    model = prepare_model_for_kbit_training(model)
+
+    # LoRA config
+    lora_config = LoraConfig(
+        r=config["lora"]["r"],
+        lora_alpha=config["lora"]["alpha"],
+        lora_dropout=config["lora"]["dropout"],
+        target_modules=config["lora"]["target_modules"],
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+
+    # Load and prepare dataset
+    print("\nLoading dataset...")
+    dataset_name = config["dataset"]["name"]
+    local_dataset = config["dataset"].get("local_path")
+
+    if local_dataset and Path(local_dataset).exists():
+        dataset = load_dataset("json", data_files=local_dataset, split="train")
+    else:
+        dataset = load_dataset(dataset_name, split="train")
+
+    print(f"  Dataset size: {len(dataset)} examples")
+
+    # Format and tokenize
+    template = config["dataset"]["template"]
+    prompt_field = config["dataset"]["prompt_field"]
+    completion_field = config["dataset"]["completion_field"]
+    max_length = config["training"]["max_seq_length"]
+
+    def tokenize(example):
+        text = template.format(
+            prompt=example[prompt_field],
+            completion=example[completion_field]
+        )
+        return tokenizer(
+            text,
+            truncation=True,
+            max_length=max_length,
+            padding="max_length",
+        )
+
+    tokenized_dataset = dataset.map(tokenize, remove_columns=dataset.column_names)
+
+    # Training
+    output_dir = config["output"]["dir"]
+    os.makedirs(output_dir, exist_ok=True)
+
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=config["training"]["epochs"],
+        per_device_train_batch_size=config["training"]["batch_size"],
+        gradient_accumulation_steps=config["training"]["gradient_accumulation_steps"],
+        learning_rate=config["training"]["learning_rate"],
+        warmup_ratio=config["training"]["warmup_ratio"],
+        weight_decay=config["training"]["weight_decay"],
+        lr_scheduler_type=config["training"]["lr_scheduler_type"],
+        fp16=config["training"]["fp16"],
+        bf16=config["training"]["bf16"],
+        logging_steps=config["output"]["logging_steps"],
+        save_strategy=config["output"]["save_strategy"],
+        save_total_limit=config["output"]["save_total_limit"],
+        gradient_checkpointing=config["training"]["gradient_checkpointing"],
+        report_to="none",
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_dataset,
+    )
+
+    print("\n" + "=" * 60)
+    print("Starting training...")
+    print("=" * 60)
+
+    trainer.train()
+
+    # Save
+    print("\nSaving model...")
+    model.save_pretrained(f"{output_dir}/final")
+    tokenizer.save_pretrained(f"{output_dir}/final")
+
+    print(f"\nTraining complete! Model saved to {output_dir}/final")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="TØR-G LoRA fine-tuning")
+    parser.add_argument(
+        "--config", "-c",
+        type=str,
+        default="config.yaml",
+        help="Path to config YAML file"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["unsloth", "peft"],
+        default="unsloth",
+        help="Training backend (unsloth recommended)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print config without training"
+    )
+
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+
+    if args.dry_run:
+        print("Configuration:")
+        print(yaml.dump(config, default_flow_style=False))
+
+    if args.backend == "unsloth":
+        train_with_unsloth(config, dry_run=args.dry_run)
+    else:
+        train_with_peft(config, dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    main()
