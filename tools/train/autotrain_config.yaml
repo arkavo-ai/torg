@@ -1,0 +1,44 @@
+# AutoTrain Configuration for TØR-G LoRA Fine-Tuning
+#
+# Setup:
+#   1. pip install autotrain-advanced
+#   2. python prepare_autotrain_dataset.py --push
+#   3. autotrain llm --config autotrain_config.yaml
+#
+# Or use AutoTrain UI at: https://huggingface.co/autotrain
+
+task: llm-sft
+base_model: mistralai/Ministral-8B-Instruct-2410
+project_name: torg-ministral-8b-lora
+
+# Dataset from HuggingFace Hub (formatted for AutoTrain)
+data:
+  path: Arkavo/torg-dataset-autotrain
+  train_split: train
+  text_column: text
+
+# LoRA Configuration
+peft: true
+quantization: int4
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules: q_proj,k_proj,v_proj,o_proj
+
+# Training Parameters
+epochs: 3
+batch_size: 2
+gradient_accumulation: 8
+learning_rate: 0.0002
+warmup_ratio: 0.03
+max_seq_length: 512
+optimizer: adamw_torch
+scheduler: cosine
+weight_decay: 0.01
+
+# Mixed Precision
+mixed_precision: bf16
+
+# Output
+push_to_hub: true
+hub_model_id: Arkavo/torg-ministral-8b-lora

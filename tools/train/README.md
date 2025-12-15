@@ -68,6 +68,31 @@ Edit `config.yaml` to adjust:
 - Uses 4-bit QLoRA for memory efficiency
 - Can use larger batch sizes
 
+### HuggingFace AutoTrain (Cloud - Recommended)
+Use HuggingFace's cloud infrastructure for training without local GPU requirements.
+
+**Option 1: AutoTrain CLI**
+```bash
+# Install AutoTrain
+pip install autotrain-advanced
+
+# Prepare dataset for AutoTrain format
+python prepare_autotrain_dataset.py --push
+
+# Run training (uses HF cloud compute)
+autotrain llm --config autotrain_config.yaml
+```
+
+**Option 2: AutoTrain Web UI**
+1. Go to https://huggingface.co/autotrain
+2. Create new project → LLM Fine-tuning
+3. Select base model: `mistralai/Ministral-8B-Instruct-2410`
+4. Upload dataset or use `Arkavo/torg-dataset-autotrain`
+5. Configure LoRA: r=16, alpha=32, dropout=0.05
+6. Select GPU (A10G or A100) and start training
+
+**Pricing**: ~$2-8/hour depending on GPU. Training ~1000 examples for 3 epochs typically takes 1-2 hours.
+
 ## Output
 
 Checkpoints saved to `./output/torg-ministral-8b-lora/`
