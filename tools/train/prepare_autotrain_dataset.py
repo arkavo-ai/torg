@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import os
 from datasets import load_dataset
 
 
@@ -45,7 +46,10 @@ def prepare_dataset(push_to_hub: bool = False):
 
     if push_to_hub:
         print("\nPushing to Arkavo/torg-dataset...")
-        formatted_dataset.push_to_hub("Arkavo/torg-dataset")
+        token = os.environ.get("HF_TOKEN")
+        if token:
+            print("  Using HF_TOKEN from environment")
+        formatted_dataset.push_to_hub("Arkavo/torg-dataset", token=token)
         print("Done! Dataset updated at: https://huggingface.co/datasets/Arkavo/torg-dataset")
     else:
         print("\nTo push to HuggingFace Hub, run with --push flag")
