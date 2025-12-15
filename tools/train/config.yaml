@@ -2,9 +2,10 @@
 # For Ministral-3-8B-Base-2512
 
 model:
+  # Ministral 3 8B Base - 8.4B language backbone (vision encoder unused for text-only)
   name: mistralai/Ministral-3-8B-Base-2512
   # Local path if downloaded via huggingface-cli
-  local_path: /Volumes/SSD/huggingface/hub/models--mistralai--Ministral-3-8B-Base-2512
+  local_path: /Volumes/SSD/huggingface/hub/models--mistralai--Ministral-3-8B-Base-2512/snapshots/ca581b42b51f2816b872c268f23993a1793b0fde
 
 dataset:
   name: Arkavo/torg-dataset
@@ -33,8 +34,8 @@ lora:
 
 training:
   epochs: 3
-  batch_size: 4
-  gradient_accumulation_steps: 4
+  batch_size: 1  # Reduced for Mac MPS
+  gradient_accumulation_steps: 16  # Keep effective batch size ~16
   # Effective batch size: 4 * 4 = 16
   learning_rate: 2.0e-4
   warmup_ratio: 0.03

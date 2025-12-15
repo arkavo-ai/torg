@@ -146,6 +146,7 @@ def train_with_peft(config: dict, dry_run: bool = False):
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
+            AutoConfig,
             TrainingArguments,
             Trainer,
             BitsAndBytesConfig,
@@ -174,24 +175,87 @@ def train_with_peft(config: dict, dry_run: bool = False):
         print("[DRY RUN] Would load model and start training")
         return
 
-    # Quantization config
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=config["quantization"]["load_in_4bit"],
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_type=config["quantization"]["bnb_4bit_quant_type"],
-        bnb_4bit_use_double_quant=config["quantization"]["bnb_4bit_use_double_quant"],
-    )
+    # Detect device
+    import platform
+    is_mac = platform.system() == "Darwin"
+    has_cuda = torch.cuda.is_available()
+    has_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+
+    if is_mac:
+        print(f"  Running on macOS (MPS available: {has_mps})")
+        # No quantization on Mac (bitsandbytes doesn't support MPS)
+        bnb_config = None
+        # For MPS, don't use device_map - load to CPU then move to MPS
+        device_map = None
+        torch_dtype = torch.float16
+    elif has_cuda:
+        print(f"  Running on CUDA")
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=config["quantization"]["load_in_4bit"],
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type=config["quantization"]["bnb_4bit_quant_type"],
+            bnb_4bit_use_double_quant=config["quantization"]["bnb_4bit_use_double_quant"],
+        )
+        device_map = "auto"
+        torch_dtype = torch.bfloat16
+    else:
+        print(f"  Running on CPU")
+        bnb_config = None
+        device_map = {"": "cpu"}
+        torch_dtype = torch.float32
+
+    # Check if this is a Ministral 3 model (multimodal but text-only usage)
+    is_ministral3 = "Ministral-3" in model_name or "ministral-3" in model_name.lower()
 
     # Load model
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        quantization_config=bnb_config,
-        device_map="auto",
-        trust_remote_code=True,
-    )
+    print("  Loading model (this may take a while)...")
+    if is_ministral3:
+        # Ministral 3 uses Mistral3ForConditionalGeneration
+        # Vision encoder is unused when no images provided (text-only fine-tuning)
+        print("  Detected Ministral 3 model - using Mistral3ForConditionalGeneration")
+        from transformers import Mistral3ForConditionalGeneration, AutoProcessor
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    tokenizer.pad_token = tokenizer.eos_token
+        load_kwargs = {
+            "torch_dtype": torch_dtype,
+            "trust_remote_code": True,
+            "low_cpu_mem_usage": True,
+        }
+        if bnb_config:
+            load_kwargs["quantization_config"] = bnb_config
+        if device_map:
+            load_kwargs["device_map"] = device_map
+
+        model = Mistral3ForConditionalGeneration.from_pretrained(model_name, **load_kwargs)
+
+        # Move to MPS if on Mac
+        if is_mac and has_mps:
+            print("  Moving model to MPS...")
+            model = model.to("mps")
+
+        # Use AutoProcessor which handles the tokenizer
+        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
+    else:
+        load_kwargs = {
+            "torch_dtype": torch_dtype,
+            "trust_remote_code": True,
+            "low_cpu_mem_usage": True,
+        }
+        if bnb_config:
+            load_kwargs["quantization_config"] = bnb_config
+        if device_map:
+            load_kwargs["device_map"] = device_map
+
+        model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+
+        if is_mac and has_mps:
+            print("  Moving model to MPS...")
+            model = model.to("mps")
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     # Prepare for k-bit training
     model = prepare_model_for_kbit_training(model)
