@@ -32,8 +32,11 @@ huggingface-cli download mistralai/Ministral-3-8B-Base-2512
 ```bash
 cd tools/train
 
-# Run training
+# Run training (will try MPS, falls back to CPU if memory issues)
 python train.py --config config.yaml --backend peft
+
+# Force CPU training (slower but guaranteed to work on Mac)
+python train.py --config config.yaml --backend peft --cpu
 
 # Or dry run to check config
 python train.py --config config.yaml --dry-run
@@ -54,9 +57,12 @@ Edit `config.yaml` to adjust:
 ## Platform Notes
 
 ### Mac Studio M1 (32GB)
-- Uses MPS backend with fp16
+- MPS has buffer size limitations that may prevent loading large models
+- If MPS fails, training automatically falls back to CPU
+- Use `--cpu` flag to skip MPS attempt and train directly on CPU
 - No quantization (bitsandbytes not supported on MPS)
 - Batch size 1, gradient accumulation 16
+- CPU training is slower but works reliably
 
 ### CUDA GPU
 - Uses 4-bit QLoRA for memory efficiency
