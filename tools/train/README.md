@@ -76,7 +76,7 @@ Use HuggingFace's cloud infrastructure for training without local GPU requiremen
 # Install AutoTrain
 pip install autotrain-advanced
 
-# Prepare dataset for AutoTrain format
+# Add 'text' column to dataset (run once, needs HF write access)
 python prepare_autotrain_dataset.py --push
 
 # Run training (uses HF cloud compute)
@@ -87,7 +87,7 @@ autotrain llm --config autotrain_config.yaml
 1. Go to https://huggingface.co/autotrain
 2. Create new project → LLM Fine-tuning
 3. Select base model: `mistralai/Ministral-8B-Instruct-2410`
-4. Upload dataset or use `Arkavo/torg-dataset-autotrain`
+4. Dataset: `Arkavo/torg-dataset` (text column)
 5. Configure LoRA: r=16, alpha=32, dropout=0.05
 6. Select GPU (A10G or A100) and start training
 

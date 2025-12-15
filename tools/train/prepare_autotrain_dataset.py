@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare dataset for AutoTrain by converting prompt/completion to text format.
+"""Add 'text' column to existing dataset for AutoTrain compatibility.
 
 Usage:
     python prepare_autotrain_dataset.py
@@ -11,7 +11,7 @@ from datasets import load_dataset
 
 
 def prepare_dataset(push_to_hub: bool = False):
-    """Convert Arkavo/torg-dataset to AutoTrain format."""
+    """Add 'text' column to Arkavo/torg-dataset for AutoTrain."""
     print("Loading dataset from Arkavo/torg-dataset...")
     dataset = load_dataset("Arkavo/torg-dataset", split="train")
 
@@ -25,7 +25,7 @@ def prepare_dataset(push_to_hub: bool = False):
 ### TØR-G Token Sequence:
 {completion}"""
 
-    def format_for_autotrain(example):
+    def add_text_column(example):
         return {
             "text": template.format(
                 prompt=example["prompt"],
@@ -33,19 +33,20 @@ def prepare_dataset(push_to_hub: bool = False):
             )
         }
 
-    print("Converting to AutoTrain format...")
-    formatted_dataset = dataset.map(format_for_autotrain, remove_columns=["prompt", "completion"])
+    print("Adding 'text' column for AutoTrain...")
+    # Keep original columns, just add 'text'
+    formatted_dataset = dataset.map(add_text_column)
 
-    print(f"  New columns: {formatted_dataset.column_names}")
+    print(f"  Columns: {formatted_dataset.column_names}")
     print(f"\nExample:")
     print("-" * 60)
     print(formatted_dataset[0]["text"])
     print("-" * 60)
 
     if push_to_hub:
-        print("\nPushing to Arkavo/torg-dataset-autotrain...")
-        formatted_dataset.push_to_hub("Arkavo/torg-dataset-autotrain")
-        print("Done! Dataset available at: https://huggingface.co/datasets/Arkavo/torg-dataset-autotrain")
+        print("\nPushing to Arkavo/torg-dataset...")
+        formatted_dataset.push_to_hub("Arkavo/torg-dataset")
+        print("Done! Dataset updated at: https://huggingface.co/datasets/Arkavo/torg-dataset")
     else:
         print("\nTo push to HuggingFace Hub, run with --push flag")
 
@@ -57,7 +58,7 @@ def main():
     parser.add_argument(
         "--push",
         action="store_true",
-        help="Push formatted dataset to HuggingFace Hub"
+        help="Push updated dataset to HuggingFace Hub"
     )
     args = parser.parse_args()
 

@@ -11,9 +11,9 @@ task: llm-sft
 base_model: mistralai/Ministral-8B-Instruct-2410
 project_name: torg-ministral-8b-lora
 
-# Dataset from HuggingFace Hub (formatted for AutoTrain)
+# Dataset from HuggingFace Hub
 data:
-  path: Arkavo/torg-dataset-autotrain
+  path: Arkavo/torg-dataset
   train_split: train
   text_column: text
 
