@@ -66,7 +66,30 @@ Edit `config.yaml` to adjust:
 
 Checkpoints saved to `./output/torg-ministral-8b-lora/`
 
-After training:
-1. Merge LoRA weights: `model.merge_and_unload()`
-2. Convert to GGUF for llama.cpp
-3. Test with `tools/demo/constrained_generate.py`
+## Post-Training: Merge & Export
+
+After training completes, merge LoRA and export to GGUF:
+
+```bash
+# Merge LoRA + convert to GGUF + quantize
+python merge_and_export.py \
+    --checkpoint ./output/torg-ministral-8b-lora/final \
+    --quantize q4_k_m
+
+# Or step by step:
+python merge_and_export.py --checkpoint ./output/torg-ministral-8b-lora/final --skip-gguf  # Merge only
+python merge_and_export.py --checkpoint ./output/torg-ministral-8b-lora/final --skip-merge  # GGUF only
+```
+
+Output files:
+- `./output/torg-ministral-8b-merged/` - Merged HF model
+- `./output/torg-ministral-8b-f16.gguf` - Full precision GGUF
+- `./output/torg-ministral-8b-q4_k_m.gguf` - Quantized GGUF
+
+## Test
+
+```bash
+cd ../demo
+python constrained_generate.py --model ../train/output/torg-ministral-8b-q4_k_m.gguf \
+    --prompt "Allow if admin OR member"
+```
