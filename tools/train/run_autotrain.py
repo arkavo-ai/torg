@@ -55,8 +55,8 @@ def main():
         "--weight-decay", "0.01",
         "--mixed-precision", "bf16",
         "--logging-steps", "10",
-        # Run on HF Spaces with A10G GPU
-        "--backend", "spaces-a10g-small",
+        # Run on HF Spaces with L4 GPU (try this if A10G fails)
+        "--backend", "spaces-l4x1",
     ]
 
     print(f"\nConfiguration:")
@@ -64,7 +64,7 @@ def main():
     print(f"  Dataset: Arkavo/torg-dataset")
     print(f"  LoRA: r=16, alpha=32")
     print(f"  Epochs: 3")
-    print(f"  Backend: spaces-a10g-small (A10G Small GPU)")
+    print(f"  Backend: spaces-l4x1 (L4 GPU)")
     print(f"  Output: https://huggingface.co/Arkavo/torg-ministral-8b-lora")
 
     print("\n" + "=" * 60)
