@@ -24,6 +24,26 @@ pub enum Phase {
     Done,
 }
 
+/// State within the Inputs phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum InputState {
+    /// Ready for InputDecl, NodeStart, or OutputDecl.
+    #[default]
+    Ready,
+    /// Just saw InputDecl, expecting Id.
+    ExpectId,
+}
+
+/// State within the Outputs phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum OutputState {
+    /// Ready for OutputDecl or end.
+    #[default]
+    Ready,
+    /// Just saw OutputDecl, expecting Id.
+    ExpectId,
+}
+
 /// State within a node definition (● ... ○).
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +76,8 @@ pub struct Builder {
     graph: Graph,
     phase: Phase,
     node_state: Option<NodeState>,
+    input_state: InputState,
+    output_state: OutputState,
     /// All defined IDs (inputs + nodes).
     defined: HashSet<u16>,
     limits: Limits,
@@ -79,6 +101,8 @@ impl Builder {
             graph: Graph::new(),
             phase: Phase::Inputs,
             node_state: None,
+            input_state: InputState::default(),
+            output_state: OutputState::default(),
             defined: HashSet::new(),
             limits,
         }
@@ -87,6 +111,21 @@ impl Builder {
     /// Get the current build phase.
     pub fn phase(&self) -> Phase {
         self.phase
+    }
+
+    /// Check if the graph is in a completable state.
+    ///
+    /// Returns `true` when:
+    /// - At least one output has been declared
+    /// - No node definition is in progress
+    /// - We're ready for another output (not mid-declaration)
+    ///
+    /// This is useful for LLM decoding where we want to know if
+    /// generation can stop, even though more outputs could be added.
+    pub fn is_completable(&self) -> bool {
+        !self.graph.outputs.is_empty()
+            && self.node_state.is_none()
+            && self.output_state == OutputState::Ready
     }
 
     /// Feed a single token to the builder.
@@ -118,40 +157,52 @@ impl Builder {
 
     /// Handle tokens in the Inputs phase.
     fn handle_inputs(&mut self, token: Token) -> Result<(), BuildError> {
-        match token {
-            Token::InputDecl => {
-                // Stay in Inputs phase, expect Id next
-                Ok(())
-            }
-            Token::Id(id) => {
-                // Check limits
-                if self.graph.inputs.len() >= self.limits.max_inputs {
-                    return Err(BuildError::MaxInputsExceeded(self.limits.max_inputs));
+        match self.input_state {
+            InputState::Ready => {
+                // Expecting InputDecl, NodeStart, or OutputDecl
+                match token {
+                    Token::InputDecl => {
+                        // Check limits before accepting
+                        if self.graph.inputs.len() >= self.limits.max_inputs {
+                            return Err(BuildError::MaxInputsExceeded(self.limits.max_inputs));
+                        }
+                        self.input_state = InputState::ExpectId;
+                        Ok(())
+                    }
+                    Token::NodeStart => {
+                        // Check limits
+                        if self.graph.nodes.len() >= self.limits.max_nodes {
+                            return Err(BuildError::MaxNodesExceeded(self.limits.max_nodes));
+                        }
+                        // Transition to Nodes phase
+                        self.phase = Phase::Nodes;
+                        self.node_state = Some(NodeState::ExpectId);
+                        Ok(())
+                    }
+                    Token::OutputDecl => {
+                        // Skip directly to Outputs phase (empty nodes section)
+                        self.phase = Phase::Outputs;
+                        self.output_state = OutputState::ExpectId;
+                        Ok(())
+                    }
+                    _ => Err(BuildError::UnexpectedToken),
                 }
-                // Check for duplicate
-                if self.defined.contains(&id) {
-                    return Err(BuildError::DuplicateDefinition(id));
+            }
+            InputState::ExpectId => {
+                // Expecting an Id after InputDecl
+                if let Token::Id(id) = token {
+                    // Check for duplicate
+                    if self.defined.contains(&id) {
+                        return Err(BuildError::DuplicateDefinition(id));
+                    }
+                    self.defined.insert(id);
+                    self.graph.inputs.push(id);
+                    self.input_state = InputState::Ready;
+                    Ok(())
+                } else {
+                    Err(BuildError::UnexpectedToken)
                 }
-                self.defined.insert(id);
-                self.graph.inputs.push(id);
-                Ok(())
             }
-            Token::NodeStart => {
-                // Check limits
-                if self.graph.nodes.len() >= self.limits.max_nodes {
-                    return Err(BuildError::MaxNodesExceeded(self.limits.max_nodes));
-                }
-                // Transition to Nodes phase
-                self.phase = Phase::Nodes;
-                self.node_state = Some(NodeState::ExpectId);
-                Ok(())
-            }
-            Token::OutputDecl => {
-                // Skip directly to Outputs phase (empty nodes section)
-                self.phase = Phase::Outputs;
-                Ok(())
-            }
-            _ => Err(BuildError::UnexpectedToken),
         }
     }
 
@@ -170,7 +221,12 @@ impl Builder {
                         Ok(())
                     }
                     Token::OutputDecl => {
+                        // Check limits before accepting
+                        if self.graph.outputs.len() >= self.limits.max_outputs {
+                            return Err(BuildError::MaxOutputsExceeded(self.limits.max_outputs));
+                        }
                         self.phase = Phase::Outputs;
+                        self.output_state = OutputState::ExpectId;
                         Ok(())
                     }
                     _ => Err(BuildError::UnexpectedToken),
@@ -269,26 +325,37 @@ impl Builder {
 
     /// Handle tokens in the Outputs phase.
     fn handle_outputs(&mut self, token: Token) -> Result<(), BuildError> {
-        match token {
-            Token::OutputDecl => {
-                // Stay in Outputs phase, expect Id next
-                Ok(())
-            }
-            Token::Id(id) => {
-                // Check limits
-                if self.graph.outputs.len() >= self.limits.max_outputs {
-                    return Err(BuildError::MaxOutputsExceeded(self.limits.max_outputs));
+        match self.output_state {
+            OutputState::Ready => {
+                // Expecting OutputDecl
+                match token {
+                    Token::OutputDecl => {
+                        // Check limits before accepting
+                        if self.graph.outputs.len() >= self.limits.max_outputs {
+                            return Err(BuildError::MaxOutputsExceeded(self.limits.max_outputs));
+                        }
+                        self.output_state = OutputState::ExpectId;
+                        Ok(())
+                    }
+                    _ => {
+                        self.phase = Phase::Done;
+                        Err(BuildError::UnexpectedToken)
+                    }
                 }
-                // Output must reference a defined ID
-                if !self.defined.contains(&id) {
-                    return Err(BuildError::UndefinedReference(id));
-                }
-                self.graph.outputs.push(id);
-                Ok(())
             }
-            _ => {
-                self.phase = Phase::Done;
-                Err(BuildError::UnexpectedToken)
+            OutputState::ExpectId => {
+                // Expecting an Id after OutputDecl
+                if let Token::Id(id) = token {
+                    // Output must reference a defined ID
+                    if !self.defined.contains(&id) {
+                        return Err(BuildError::UndefinedReference(id));
+                    }
+                    self.graph.outputs.push(id);
+                    self.output_state = OutputState::Ready;
+                    Ok(())
+                } else {
+                    Err(BuildError::UnexpectedToken)
+                }
             }
         }
     }
@@ -308,31 +375,39 @@ impl Builder {
     }
 
     fn valid_in_inputs(&self) -> Vec<Token> {
-        let mut valid = Vec::new();
+        match self.input_state {
+            InputState::Ready => {
+                // Ready for structural tokens, NOT Id
+                let mut valid = Vec::new();
 
-        // Can always declare more inputs (up to limit)
-        if self.graph.inputs.len() < self.limits.max_inputs {
-            valid.push(Token::InputDecl);
-            // After InputDecl, valid IDs are any not yet defined
-            // For practicality, suggest a range
-            for id in 0..=255u16 {
-                if !self.defined.contains(&id) {
-                    valid.push(Token::Id(id));
+                // Can declare more inputs (up to limit)
+                if self.graph.inputs.len() < self.limits.max_inputs {
+                    valid.push(Token::InputDecl);
                 }
+
+                // Can start defining nodes
+                if self.graph.nodes.len() < self.limits.max_nodes {
+                    valid.push(Token::NodeStart);
+                }
+
+                // Can go directly to outputs
+                if self.graph.outputs.len() < self.limits.max_outputs {
+                    valid.push(Token::OutputDecl);
+                }
+
+                valid
+            }
+            InputState::ExpectId => {
+                // After InputDecl, only Id tokens are valid
+                let mut valid = Vec::new();
+                for id in 0..=255u16 {
+                    if !self.defined.contains(&id) {
+                        valid.push(Token::Id(id));
+                    }
+                }
+                valid
             }
         }
-
-        // Can start defining nodes
-        if self.graph.nodes.len() < self.limits.max_nodes {
-            valid.push(Token::NodeStart);
-        }
-
-        // Can go directly to outputs (even with no nodes, though finish() will fail)
-        if self.graph.outputs.len() < self.limits.max_outputs {
-            valid.push(Token::OutputDecl);
-        }
-
-        valid
     }
 
     fn valid_in_nodes(&self) -> Vec<Token> {
@@ -386,17 +461,24 @@ impl Builder {
     }
 
     fn valid_in_outputs(&self) -> Vec<Token> {
-        let mut valid = Vec::new();
-
-        if self.graph.outputs.len() < self.limits.max_outputs {
-            valid.push(Token::OutputDecl);
-            // Can reference any defined ID as output
-            for &id in &self.defined {
-                valid.push(Token::Id(id));
+        match self.output_state {
+            OutputState::Ready => {
+                // Ready for OutputDecl only (or end of graph)
+                let mut valid = Vec::new();
+                if self.graph.outputs.len() < self.limits.max_outputs {
+                    valid.push(Token::OutputDecl);
+                }
+                valid
+            }
+            OutputState::ExpectId => {
+                // After OutputDecl, only defined IDs are valid
+                let mut valid = Vec::new();
+                for &id in &self.defined {
+                    valid.push(Token::Id(id));
+                }
+                valid
             }
         }
-
-        valid
     }
 }
 

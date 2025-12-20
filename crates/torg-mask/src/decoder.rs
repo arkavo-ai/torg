@@ -57,10 +57,10 @@ impl ConstrainedDecoder {
 
     /// Check if decoding is complete.
     ///
-    /// Returns `true` when the builder is in the `Done` phase or when
-    /// there are no more valid tokens (which shouldn't happen in normal use).
+    /// Returns `true` when the graph is in a completable state (at least
+    /// one output declared) or when the builder is in the `Done` phase.
     pub fn is_complete(&self) -> bool {
-        self.builder.phase() == Phase::Done
+        self.builder.phase() == Phase::Done || self.builder.is_completable()
     }
 
     /// Generate the logit mask for the next token.
