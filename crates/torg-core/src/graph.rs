@@ -8,6 +8,7 @@ use crate::token::{BoolOp, Source};
 /// Nodes are stored in topological order, so evaluation can proceed
 /// sequentially without dependency resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Node {
     /// The unique identifier for this node.
     pub id: u16,
@@ -41,6 +42,7 @@ impl Node {
 /// The graph is guaranteed to be a DAG because nodes can only
 /// reference previously-defined IDs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Graph {
     /// Declared input IDs (in declaration order).
     pub inputs: Vec<u16>,

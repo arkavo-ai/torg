@@ -10,4 +10,7 @@ keywords = ["ai", "llm", "policy", "serde"]
 categories = ["encoding"]
 
 [dependencies]
-torg-core = { path = "../torg-core" }
+torg-core = { path = "../torg-core", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = { workspace = true }

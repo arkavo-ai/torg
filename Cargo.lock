@@ -460,29 +460,33 @@ dependencies = [
 
 [[package]]
 name = "torg-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "criterion",
+ "serde",
  "thiserror",
 ]
 
 [[package]]
 name = "torg-mask"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "torg-core",
 ]
 
 [[package]]
 name = "torg-serde"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
  "torg-core",
 ]
 
 [[package]]
 name = "torg-verify"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "torg-core",
 ]

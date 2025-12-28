@@ -9,8 +9,13 @@ description = "TØR-G: Token-Only Reasoner (Graph) - Boolean circuit IR for AI p
 keywords = ["ai", "llm", "policy", "boolean-circuit", "dag"]
 categories = ["algorithms", "data-structures"]
 
+[features]
+default = []
+serde = ["dep:serde"]
+
 [dependencies]
 thiserror.workspace = true
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 criterion.workspace = true

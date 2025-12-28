@@ -71,6 +71,7 @@ impl Token {
 ///
 /// Represents where a node gets its input value from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Source {
     /// Reference to a declared input or previous node by ID.
     Id(u16),
@@ -82,6 +83,7 @@ pub enum Source {
 
 /// Binary boolean operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BoolOp {
     /// Logical OR: A ∨ B
     Or,
