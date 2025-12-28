@@ -10,4 +10,4 @@ keywords = ["ai", "llm", "policy", "verification", "sat"]
 categories = ["algorithms"]
 
 [dependencies]
-torg-core = { path = "../torg-core" }
+torg-core = { version = "0.2", path = "../torg-core" }
