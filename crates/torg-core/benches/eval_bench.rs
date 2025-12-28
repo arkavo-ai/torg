@@ -4,7 +4,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
-use torg_core::{evaluate, Builder, Graph, Limits, Token};
+use torg_core::{evaluate, evaluate_graph, evaluate_into, Builder, Graph, Limits, Token};
 
 /// Build a chain of OR nodes for benchmarking.
 fn build_chain_graph(depth: usize) -> Graph {
@@ -122,21 +122,87 @@ fn bench_eval_chain(c: &mut Criterion) {
     });
 }
 
+fn bench_eval_chain_fast(c: &mut Criterion) {
+    let graph_10 = build_chain_graph(10);
+    let graph_50 = build_chain_graph(50);
+    let graph_100 = build_chain_graph(100);
+    let inputs = [true]; // id 0 = true
+
+    c.bench_function("eval_chain_depth_10_fast", |b| {
+        b.iter(|| evaluate_graph(black_box(&graph_10), black_box(&inputs)))
+    });
+
+    c.bench_function("eval_chain_depth_50_fast", |b| {
+        b.iter(|| evaluate_graph(black_box(&graph_50), black_box(&inputs)))
+    });
+
+    c.bench_function("eval_chain_depth_100_fast", |b| {
+        b.iter(|| evaluate_graph(black_box(&graph_100), black_box(&inputs)))
+    });
+}
+
+fn bench_eval_chain_zero_alloc(c: &mut Criterion) {
+    let graph_10 = build_chain_graph(10);
+    let graph_50 = build_chain_graph(50);
+    let graph_100 = build_chain_graph(100);
+    let inputs = [true];
+    let mut output_1 = [false];
+
+    c.bench_function("eval_chain_depth_10_zero_alloc", |b| {
+        b.iter(|| {
+            evaluate_into(black_box(&graph_10), black_box(&inputs), &mut output_1);
+            black_box(output_1[0])
+        })
+    });
+
+    c.bench_function("eval_chain_depth_50_zero_alloc", |b| {
+        b.iter(|| {
+            evaluate_into(black_box(&graph_50), black_box(&inputs), &mut output_1);
+            black_box(output_1[0])
+        })
+    });
+
+    c.bench_function("eval_chain_depth_100_zero_alloc", |b| {
+        b.iter(|| {
+            evaluate_into(black_box(&graph_100), black_box(&inputs), &mut output_1);
+            black_box(output_1[0])
+        })
+    });
+}
+
 fn bench_eval_wide(c: &mut Criterion) {
     let graph = build_wide_graph(100);
-    let inputs: HashMap<u16, bool> = (0..100u16).map(|i| (i, i % 2 == 0)).collect();
+    let inputs_map: HashMap<u16, bool> = (0..100u16).map(|i| (i, i % 2 == 0)).collect();
+    let inputs_slice: Vec<bool> = (0..100u16).map(|i| i % 2 == 0).collect();
 
     c.bench_function("eval_wide_50_nodes", |b| {
-        b.iter(|| evaluate(black_box(&graph), black_box(&inputs)))
+        b.iter(|| evaluate(black_box(&graph), black_box(&inputs_map)))
+    });
+
+    c.bench_function("eval_wide_50_nodes_fast", |b| {
+        b.iter(|| evaluate_graph(black_box(&graph), black_box(&inputs_slice)))
     });
 }
 
 fn bench_eval_policy(c: &mut Criterion) {
     let graph = build_policy_graph();
-    let inputs: HashMap<u16, bool> = [(0, true), (1, false), (2, true)].into();
+    let inputs_map: HashMap<u16, bool> = [(0, true), (1, false), (2, true)].into();
+    let inputs_slice = [true, false, true];
+    let mut output = [false];
 
     c.bench_function("eval_policy_admin_or_xor", |b| {
-        b.iter(|| evaluate(black_box(&graph), black_box(&inputs)))
+        b.iter(|| evaluate(black_box(&graph), black_box(&inputs_map)))
+    });
+
+    c.bench_function("eval_policy_admin_or_xor_fast", |b| {
+        b.iter(|| evaluate_graph(black_box(&graph), black_box(&inputs_slice)))
+    });
+
+    c.bench_function("eval_policy_admin_or_xor_zero_alloc", |b| {
+        b.iter(|| {
+            evaluate_into(black_box(&graph), black_box(&inputs_slice), &mut output);
+            black_box(output[0])
+        })
     });
 }
 
@@ -180,6 +246,8 @@ fn bench_valid_next_tokens(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_eval_chain,
+    bench_eval_chain_fast,
+    bench_eval_chain_zero_alloc,
     bench_eval_wide,
     bench_eval_policy,
     bench_build,

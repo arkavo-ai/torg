@@ -1,4 +1,7 @@
 //! Circuit evaluator for TØR-G graphs.
+//!
+//! Provides high-performance evaluation of boolean circuits using
+//! direct array indexing instead of hash maps.
 
 use std::collections::HashMap;
 
@@ -6,7 +9,10 @@ use crate::error::EvalError;
 use crate::graph::Graph;
 use crate::token::Source;
 
-/// Evaluate a TØR-G graph with given input values.
+/// Evaluate a TØR-G graph with given input values (HashMap API).
+///
+/// This is a convenience wrapper around [`evaluate_into`] for callers
+/// that prefer HashMap-based input/output.
 ///
 /// # Arguments
 ///
@@ -19,10 +25,7 @@ use crate::token::Source;
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - A required input is missing
-/// - An output references an undefined ID
-/// - Internal evaluation fails (should not happen with valid graphs)
+/// Returns an error if a required input is missing.
 pub fn evaluate(
     graph: &Graph,
     inputs: &HashMap<u16, bool>,
@@ -34,43 +37,107 @@ pub fn evaluate(
         }
     }
 
-    // Values cache: stores computed values for all IDs
-    let mut values: HashMap<u16, bool> = HashMap::new();
+    // Convert to slice-based format
+    let max_input_id = graph.inputs.iter().copied().max().unwrap_or(0) as usize;
+    let mut input_values = vec![false; max_input_id + 1];
+    for &id in &graph.inputs {
+        input_values[id as usize] = inputs[&id];
+    }
+
+    // Evaluate using fast path
+    let output_values = evaluate_graph(graph, &input_values);
+
+    // Convert output to HashMap
+    let mut result = HashMap::with_capacity(graph.outputs.len());
+    for (i, &id) in graph.outputs.iter().enumerate() {
+        result.insert(id, output_values[i]);
+    }
+
+    Ok(result)
+}
+
+/// Evaluate a graph and return output values as a Vec.
+///
+/// This is the fastest evaluation path. Input values are provided as a slice
+/// indexed by input ID. Returns output values in the same order as `graph.outputs`.
+///
+/// # Arguments
+///
+/// * `graph` - The graph to evaluate
+/// * `inputs` - Slice of boolean values indexed by input ID. Must be large enough
+///   to contain all input IDs (i.e., `inputs.len() > max_input_id`).
+///
+/// # Returns
+///
+/// Vec of output values in the same order as `graph.outputs`.
+///
+/// # Panics
+///
+/// Panics if `inputs` is too small to contain all input IDs.
+#[inline]
+pub fn evaluate_graph(graph: &Graph, inputs: &[bool]) -> Vec<bool> {
+    let mut outputs = vec![false; graph.outputs.len()];
+    evaluate_into(graph, inputs, &mut outputs);
+    outputs
+}
+
+/// Evaluate a graph into a pre-allocated output buffer.
+///
+/// This is the zero-allocation evaluation path for hot loops.
+///
+/// # Arguments
+///
+/// * `graph` - The graph to evaluate
+/// * `inputs` - Slice of boolean values indexed by input ID
+/// * `outputs` - Pre-allocated output buffer (must have length >= graph.outputs.len())
+///
+/// # Panics
+///
+/// Panics if `inputs` or `outputs` are too small.
+#[inline]
+pub fn evaluate_into(graph: &Graph, inputs: &[bool], outputs: &mut [bool]) {
+    // Fast path: empty graph
+    if graph.nodes.is_empty() {
+        // Outputs are just input references
+        for (i, &id) in graph.outputs.iter().enumerate() {
+            outputs[i] = inputs[id as usize];
+        }
+        return;
+    }
+
+    // Compute max ID to size the values array
+    let max_node_id = graph.nodes.iter().map(|n| n.id).max().unwrap_or(0);
+    let max_input_id = graph.inputs.iter().copied().max().unwrap_or(0);
+    let max_id = max_node_id.max(max_input_id) as usize;
+
+    // Pre-allocate values array (indexed by ID)
+    let mut values = vec![false; max_id + 1];
 
     // Load input values
     for &id in &graph.inputs {
-        if let Some(&val) = inputs.get(&id) {
-            values.insert(id, val);
-        }
+        values[id as usize] = inputs[id as usize];
     }
 
-    // Evaluate nodes in topological order (already sorted in graph)
+    // Evaluate nodes in topological order
     for node in &graph.nodes {
-        let left = resolve_source(&node.left, &values)?;
-        let right = resolve_source(&node.right, &values)?;
-        let result = node.op.eval(left, right);
-        values.insert(node.id, result);
+        let left = resolve_source_fast(&node.left, &values);
+        let right = resolve_source_fast(&node.right, &values);
+        values[node.id as usize] = node.op.eval(left, right);
     }
 
-    // Collect output values
-    let mut outputs = HashMap::new();
-    for &id in &graph.outputs {
-        let val = values.get(&id).ok_or(EvalError::MissingOutput(id))?;
-        outputs.insert(id, *val);
+    // Write outputs
+    for (i, &id) in graph.outputs.iter().enumerate() {
+        outputs[i] = values[id as usize];
     }
-
-    Ok(outputs)
 }
 
-/// Resolve a source operand to its boolean value.
-fn resolve_source(source: &Source, values: &HashMap<u16, bool>) -> Result<bool, EvalError> {
+/// Resolve a source operand using direct array indexing.
+#[inline(always)]
+fn resolve_source_fast(source: &Source, values: &[bool]) -> bool {
     match source {
-        Source::True => Ok(true),
-        Source::False => Ok(false),
-        Source::Id(id) => values
-            .get(id)
-            .copied()
-            .ok_or(EvalError::UndefinedValue(*id)),
+        Source::True => true,
+        Source::False => false,
+        Source::Id(id) => values[*id as usize],
     }
 }
 
@@ -163,5 +230,38 @@ mod tests {
         // Any true = false
         let result = evaluate(&graph, &[(0, true), (1, false)].into()).unwrap();
         assert!(!result[&2]);
+    }
+
+    #[test]
+    fn test_evaluate_graph_fast() {
+        let graph = Graph {
+            inputs: vec![0, 1],
+            nodes: vec![Node::new(2, BoolOp::Or, Source::Id(0), Source::Id(1))],
+            outputs: vec![2],
+        };
+
+        // Use slice-based API
+        let inputs = [false, true]; // id 0 = false, id 1 = true
+        let outputs = evaluate_graph(&graph, &inputs);
+        assert_eq!(outputs, vec![true]); // false OR true = true
+    }
+
+    #[test]
+    fn test_evaluate_into_zero_alloc() {
+        let graph = Graph {
+            inputs: vec![0, 1],
+            nodes: vec![
+                Node::new(2, BoolOp::Or, Source::Id(0), Source::Id(1)),
+                Node::new(3, BoolOp::Xor, Source::Id(0), Source::Id(1)),
+            ],
+            outputs: vec![2, 3],
+        };
+
+        let inputs = [true, false];
+        let mut outputs = [false, false];
+        evaluate_into(&graph, &inputs, &mut outputs);
+
+        assert_eq!(outputs[0], true); // true OR false = true
+        assert_eq!(outputs[1], true); // true XOR false = true
     }
 }

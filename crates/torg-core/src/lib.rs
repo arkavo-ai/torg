@@ -79,7 +79,7 @@ pub mod token;
 
 pub use builder::{Builder, Phase};
 pub use error::{BuildError, EvalError};
-pub use eval::evaluate;
+pub use eval::{evaluate, evaluate_graph, evaluate_into};
 pub use graph::{Graph, Node};
 pub use limits::Limits;
 pub use token::{BoolOp, Source, Token};
