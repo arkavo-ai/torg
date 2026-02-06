@@ -3,11 +3,11 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/arkavo-ai/torg"
 
 [workspace.dependencies]
-thiserror = "1.0"
+thiserror = "2.0"
 criterion = "0.5"
